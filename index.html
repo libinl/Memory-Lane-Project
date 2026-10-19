@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Who's Here">
+<title>Who's Here</title>
+<style>
+  :root{
+    --bg:#EFE7D8;
+    --ink:#26332C;
+    --ink-soft:#5B6960;
+    --pine:#365B4C;
+    --pine-dark:#24463A;
+    --gold:#C99A34;
+    --brick:#A85C4B;
+    --card:#FBF8F0;
+    --ring:rgba(54,91,76,0.30);
+    --font-display: ui-serif, Georgia, 'Times New Roman', serif;
+    --font-body: -apple-system, 'SF Pro Text', system-ui, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; height:100%;
+    background:var(--bg); color:var(--ink);
+    font-family:var(--font-body);
+    -webkit-user-select:none; user-select:none;
+    overscroll-behavior:none;
+  }
+  #app{position:relative; width:100%; height:100vh; height:100dvh; overflow:hidden;}
+  .view{position:absolute; inset:0; display:none; flex-direction:column; align-items:center; padding:env(safe-area-inset-top,20px) 20px env(safe-area-inset-bottom,20px);}
+  .view.active{display:flex;}
+
+  /* ---------- Recognize view ---------- */
+  .topbar{width:100%; display:flex; justify-content:space-between; align-items:center; padding:8px 4px;}
+  .icon-btn{
+    width:46px; height:46px; border-radius:50%; border:none;
+    background:rgba(54,91,76,0.10); color:var(--pine-dark);
+    font-size:20px; display:flex; align-items:center; justify-content:center;
+    touch-action:manipulation;
+  }
+  .icon-btn:active{background:rgba(54,91,76,0.22);}
+  .hold-progress{
+    position:absolute; inset:0; border-radius:50%;
+    background:conic-gradient(var(--gold) calc(var(--pct,0)*1%), transparent 0);
+    pointer-events:none;
+  }
+
+  .status-text{
+    font-size:22px; text-align:center; color:var(--ink-soft);
+    margin:18px 10px 6px; max-width:420px; line-height:1.35;
+  }
+  .link-btn{
+    background:none; border:none; color:var(--pine-dark);
+    font-family:var(--font-body); font-size:18px; text-decoration:underline;
+    padding:10px 16px; margin-top:2px;
+  }
+
+  .result-overlay{
+    position:fixed; inset:0; background:#000; z-index:50;
+    opacity:0; pointer-events:none; transition:opacity .35s ease;
+  }
+  .result-overlay:not(.hidden){opacity:1; pointer-events:auto;}
+  .result-photo-bg{
+    position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+    filter:blur(30px) brightness(0.55); transform:scale(1.15);
+    transition:opacity .4s ease;
+  }
+  .result-photo-full{
+    position:absolute; inset:0; width:100%; height:100%; object-fit:contain;
+    transition:opacity .4s ease;
+  }
+  .result-scrim{
+    position:absolute; left:0; right:0; bottom:0; height:48%;
+    background:linear-gradient(to top, rgba(0,0,0,0.80), rgba(0,0,0,0));
+    pointer-events:none;
+  }
+  .result-topbar{
+    position:absolute; top:0; left:0; right:0; z-index:3;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:calc(env(safe-area-inset-top,16px) + 10px) 16px 0;
+  }
+  .circle-btn-light{
+    width:46px; height:46px; border-radius:50%; border:none;
+    background:rgba(255,255,255,0.90); color:var(--pine-dark);
+    font-size:19px; touch-action:manipulation;
+  }
+  .result-dots{display:flex; gap:6px;}
+  .result-dots span{width:7px; height:7px; border-radius:50%; background:rgba(255,255,255,0.45); display:inline-block;}
+  .result-dots span.active{background:#fff;}
+  .result-caption{
+    position:absolute; left:0; right:0; z-index:2; text-align:center;
+    bottom:calc(env(safe-area-inset-bottom,0px) + 30px); padding:0 24px; color:#fff;
+  }
+  .result-caption h1{font-family:var(--font-display); font-size:2.6rem; margin:0 0 4px; text-shadow:0 2px 12px rgba(0,0,0,0.55);}
+  .result-caption p{font-size:1.3rem; margin:0; color:#F1E7D0; text-shadow:0 2px 12px rgba(0,0,0,0.55);}
+
+  .people-grid{
+    width:100%; flex:1; min-height:0; overflow-y:auto;
+    display:flex; flex-wrap:wrap; gap:18px; align-content:flex-start;
+    justify-content:center; padding:12px 4px 24px;
+  }
+  .people-tile{
+    width:130px; display:flex; flex-direction:column; align-items:center;
+    text-align:center; background:none; border:none; touch-action:manipulation;
+  }
+  .people-tile img{
+    width:104px; height:104px; border-radius:50%; object-fit:cover;
+    border:3px solid var(--pine); background:#ddd;
+  }
+  .avatar-fallback{
+    width:104px; height:104px; border-radius:50%; background:var(--pine);
+    color:#fff; font-family:var(--font-display); font-size:40px;
+    display:flex; align-items:center; justify-content:center;
+    border:3px solid var(--gold);
+  }
+  .people-tile span{font-size:16px; margin-top:8px; color:var(--ink); font-weight:600;}
+
+  .empty-state{max-width:340px; text-align:center; margin:auto;}
+  .empty-state h2{font-family:var(--font-display); font-size:26px; margin-bottom:8px;}
+  .empty-state p{font-size:18px; color:var(--ink-soft); line-height:1.5;}
+
+  /* ---------- Manage view ---------- */
+  #manageView{align-items:stretch;}
+  .manage-header{display:flex; align-items:center; gap:10px; padding:6px 0 18px;}
+  .manage-header h1{font-family:var(--font-display); font-size:26px; margin:0; flex:1;}
+  .back-btn{
+    background:rgba(54,91,76,0.10); border:none; border-radius:14px;
+    padding:10px 16px; font-size:17px; color:var(--pine-dark); font-family:var(--font-body);
+  }
+  .people-list{flex:1; overflow-y:auto; width:100%;}
+  .person-row{
+    display:flex; align-items:center; gap:14px; background:var(--card);
+    border-radius:18px; padding:12px 14px; margin-bottom:12px;
+  }
+  .person-row img{width:60px; height:60px; border-radius:50%; object-fit:cover; background:#ddd;}
+  .person-row .pinfo{flex:1;}
+  .person-row .pinfo b{font-family:var(--font-display); font-size:19px; display:block;}
+  .person-row .pinfo span{font-size:15px; color:var(--brick);}
+  .person-row button{
+    background:none; border:none; font-size:20px; padding:8px; color:var(--ink-soft);
+  }
+  .add-btn{
+    background:var(--pine); color:#fff; border:none; border-radius:16px;
+    padding:16px; font-size:19px; font-weight:600; width:100%; margin-top:6px;
+  }
+
+  /* Add person form */
+  #addForm{display:none; flex-direction:column; gap:14px; padding-top:4px;}
+  #addForm.showing{display:flex;}
+  #addForm label{font-size:16px; color:var(--ink-soft); margin-bottom:-8px;}
+  #addForm input[type=text]{
+    font-size:19px; padding:14px; border-radius:14px; border:1px solid rgba(54,91,76,0.25);
+    background:var(--card); font-family:var(--font-body); color:var(--ink);
+  }
+  .capture-btn{
+    margin-top:10px; background:var(--pine); color:#fff; border:none; border-radius:14px;
+    padding:12px 20px; font-size:17px;
+  }
+  .save-btn{background:var(--gold); color:#3a2c0a; border:none; border-radius:16px; padding:16px; font-size:19px; font-weight:700;}
+  .cancel-btn{background:none; border:none; color:var(--ink-soft); font-size:16px; padding:8px; text-decoration:underline;}
+  .hint{font-size:14px; color:var(--ink-soft); line-height:1.4;}
+
+  /* Album editor */
+  .album-btn{font-size:20px !important;}
+  #albumEditor{display:none; flex-direction:column; padding-top:4px; overflow-y:auto;}
+  #albumEditor.showing{display:flex;}
+  .album-grid{display:flex; flex-wrap:wrap; gap:14px; margin:10px 0;}
+  .album-grid .athumb{display:flex; flex-direction:column; align-items:center; gap:5px; width:78px;}
+  .album-grid .athumb-img-wrap{position:relative; width:78px; height:78px;}
+  .album-grid .athumb-img-wrap img{width:100%; height:100%; border-radius:14px; object-fit:cover; background:#ddd;}
+  .athumb-order{display:flex; gap:4px;}
+  .athumb-order button{
+    width:30px; height:24px; border-radius:8px; border:none;
+    background:rgba(54,91,76,0.10); color:var(--pine-dark); font-size:12px;
+  }
+  .athumb-order button:disabled{opacity:0.25;}
+  .album-grid .rm{
+    position:absolute; top:-6px; right:-6px; background:var(--brick); color:#fff;
+    border:none; border-radius:50%; width:24px; height:24px; font-size:13px; line-height:1;
+  }
+  .photo-audio-btn{
+    position:absolute; bottom:-6px; right:-6px; width:26px; height:26px; border-radius:50%;
+    border:2px solid var(--card); background:var(--pine); color:#fff; font-size:12px;
+    display:flex; align-items:center; justify-content:center; line-height:1;
+  }
+  .photo-audio-btn.has-audio{background:var(--gold); color:#3a2c0a;}
+  .photo-audio-panel{
+    margin-top:6px; margin-bottom:8px; background:var(--card); border-radius:16px;
+    padding:14px; border:2px solid var(--gold);
+  }
+  .photo-audio-panel.hidden{display:none;}
+  .photo-audio-panel-head{display:flex; align-items:center; gap:10px; margin-bottom:8px;}
+  .photo-audio-panel-head img{width:44px; height:44px; border-radius:10px; object-fit:cover; background:#ddd;}
+  .photo-audio-panel-head span{flex:1; font-size:15px; color:var(--ink-soft);}
+  .circle-btn-sm{
+    width:32px; height:32px; border-radius:50%; border:none;
+    background:rgba(54,91,76,0.10); color:var(--pine-dark); font-size:14px;
+  }
+  .file-btn{
+    display:inline-block; background:rgba(54,91,76,0.10); color:var(--pine-dark);
+    padding:12px 16px; border-radius:14px; font-size:16px; text-align:center; margin-top:6px;
+  }
+  .audio-section{margin-top:14px; background:var(--card); border-radius:16px; padding:14px;}
+  .audio-btns{display:flex; flex-direction:column; gap:8px; margin-top:8px;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- RECOGNIZE VIEW -->
+  <div id="recognizeView" class="view active">
+    <div class="topbar">
+      <button id="setupHold" class="icon-btn" aria-label="Family setup, hold to open">
+        <span>⌂</span><div class="hold-progress" id="holdProgress"></div>
+      </button>
+      <button id="muteBtn" class="icon-btn" aria-label="Toggle sound">🔊</button>
+    </div>
+
+    <div id="emptyState" class="empty-state">
+      <h2>No one added yet</h2>
+      <p>Hold the small house icon in the top-left corner for two seconds to add your first family member or friend.</p>
+    </div>
+
+    <p id="statusText" class="status-text" style="display:none;">Tap on someone to see who they are</p>
+    <div id="peopleGrid" class="people-grid" style="display:none;"></div>
+
+    <div id="resultOverlay" class="result-overlay hidden">
+      <img id="resultPhotoBg" class="result-photo-bg" alt="" aria-hidden="true">
+      <img id="resultPhoto" class="result-photo-full" alt="">
+      <div class="result-scrim"></div>
+      <div class="result-topbar">
+        <button id="dismissBtn" class="circle-btn-light" aria-label="Back">✕</button>
+        <div class="result-dots" id="resultDots"></div>
+        <button id="replayBtn" class="circle-btn-light" aria-label="Say it again">🔊</button>
+      </div>
+      <div class="result-caption">
+        <h1 id="resultName"></h1>
+        <p id="resultRel"></p>
+      </div>
+      <audio id="resultAudio" style="display:none;"></audio>
+    </div>
+  </div>
+
+  <!-- MANAGE VIEW -->
+  <div id="manageView" class="view">
+    <div class="manage-header">
+      <button class="back-btn" id="backBtn">← Back</button>
+      <h1>Family setup</h1>
+    </div>
+
+    <div id="listWrap">
+      <div class="people-list" id="peopleList"></div>
+      <button class="add-btn" id="showAddBtn">+ Add someone</button>
+    </div>
+
+    <div id="addForm">
+      <label>Name</label>
+      <input type="text" id="nameInput" placeholder="e.g. David">
+      <label>Relationship</label>
+      <input type="text" id="relInput" placeholder="e.g. Your son">
+      <p class="hint">Next you'll add some photos and, optionally, a voice message for them.</p>
+
+      <button class="save-btn" id="saveBtn" type="button">Save</button>
+      <button class="cancel-btn" id="cancelAddBtn" type="button">Cancel</button>
+    </div>
+
+    <div id="albumEditor">
+      <h2 id="albumEditorName" style="font-family:var(--font-display); font-size:22px; margin:4px 0 12px;"></h2>
+      <p class="hint">Add a few photos of this person (up to 10). Use the arrows under a photo to reorder it, and tap the small mic icon to record or attach a voice clip that plays just for that picture.</p>
+
+      <div class="album-grid" id="albumGrid"></div>
+      <label class="file-btn" for="addPhotosInput">+ Add photos</label>
+      <input type="file" id="addPhotosInput" accept="image/*" multiple style="display:none;">
+      <p class="hint" style="margin-top:4px;">This opens her Photos library — pick as many as you like from her actual camera roll or albums.</p>
+
+      <div id="photoAudioPanel" class="photo-audio-panel hidden">
+        <div class="photo-audio-panel-head">
+          <img id="photoAudioThumb" alt="">
+          <span>Voice for this photo</span>
+          <button id="photoAudioClose" type="button" class="circle-btn-sm">✕</button>
+        </div>
+        <div id="photoAudioStatus" class="hint">No voice added for this photo.</div>
+        <audio id="photoAudioPreview" controls style="display:none; width:100%; margin:8px 0;"></audio>
+        <div class="audio-btns">
+          <button id="photoRecordBtn" type="button" class="capture-btn">🎤 Record</button>
+          <label class="file-btn" for="photoUploadAudioInput">Upload audio file</label>
+          <input type="file" id="photoUploadAudioInput" accept="audio/*" style="display:none;">
+          <button id="photoRemoveAudioBtn" type="button" class="cancel-btn" style="display:none;">Remove</button>
+        </div>
+      </div>
+
+      <p class="hint" style="margin-top:16px;">You can also add one general voice introduction, heard first, before the photos:</p>
+      <div class="audio-section" id="audioSection">
+        <div id="audioStatus" class="hint">No voice introduction added yet.</div>
+        <div class="audio-btns">
+          <button id="recordBtn" type="button" class="capture-btn">🎤 Record voice introduction</button>
+          <label class="file-btn" for="uploadAudioInput">Upload audio file</label>
+          <input type="file" id="uploadAudioInput" accept="audio/*" style="display:none;">
+          <button id="removeAudioBtn" type="button" class="cancel-btn" style="display:none;">Remove voice introduction</button>
+        </div>
+        <audio id="audioPreview" controls style="display:none; width:100%; margin-top:8px;"></audio>
+      </div>
+
+      <button class="save-btn" id="albumDoneBtn" type="button" style="margin-top:16px;">Done</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  const STORAGE_KEY = 'people-directory';
+
+  let people = [];   // {id, name, rel}
+  let muted = false;
+
+  const $ = (id) => document.getElementById(id);
+  const recognizeView = $('recognizeView'), manageView = $('manageView');
+  const emptyState = $('emptyState');
+  const statusText = $('statusText');
+  const peopleGrid = $('peopleGrid');
+  const resultOverlay = $('resultOverlay'), resultPhoto = $('resultPhoto'), resultPhotoBg = $('resultPhotoBg');
+  const resultName = $('resultName'), resultRel = $('resultRel');
+  const resultDots = $('resultDots');
+
+  // ---------- storage layer ----------
+  // Uses IndexedDB, a standard browser feature — this works the same way
+  // whether the page is opened inside Claude's preview, as a downloaded
+  // file, or as a Home Screen app on the iPad. (window.storage, used
+  // earlier, only exists inside Claude's own preview window and isn't
+  // available once the app is used standalone, which is the whole point.)
+  const DB_NAME = 'who-is-here-db', DB_VERSION = 1, STORE = 'kv';
+  let dbPromise = null;
+  function openDB(){
+    if(dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve, reject)=>{
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = ()=>{ req.result.createObjectStore(STORE); };
+      req.onsuccess = ()=> resolve(req.result);
+      req.onerror = ()=> reject(req.error);
+    });
+    return dbPromise;
+  }
+  async function dbGet(key){
+    const db = await openDB();
+    return new Promise((resolve, reject)=>{
+      const req = db.transaction(STORE,'readonly').objectStore(STORE).get(key);
+      req.onsuccess = ()=> resolve(req.result);
+      req.onerror = ()=> reject(req.error);
+    });
+  }
+  async function dbSet(key, value){
+    const db = await openDB();
+    return new Promise((resolve, reject)=>{
+      const tx = db.transaction(STORE,'readwrite');
+      tx.objectStore(STORE).put(value, key);
+      tx.oncomplete = ()=> resolve(true);
+      tx.onerror = ()=> reject(tx.error);
+    });
+  }
+  async function dbDelete(key){
+    const db = await openDB();
+    return new Promise((resolve, reject)=>{
+      const tx = db.transaction(STORE,'readwrite');
+      tx.objectStore(STORE).delete(key);
+      tx.oncomplete = ()=> resolve(true);
+      tx.onerror = ()=> reject(tx.error);
+    });
+  }
+  async function dbListKeys(prefix){
+    const db = await openDB();
+    return new Promise((resolve, reject)=>{
+      const req = db.transaction(STORE,'readonly').objectStore(STORE).getAllKeys();
+      req.onsuccess = ()=> resolve(req.result.filter(k => typeof k === 'string' && k.startsWith(prefix)));
+      req.onerror = ()=> reject(req.error);
+    });
+  }
+
+  // ---------- storage ----------
+  async function loadPeople(){
+    try{
+      const v = await dbGet(STORAGE_KEY);
+      if(v) people = v;
+    }catch(e){ people = []; }
+  }
+  async function savePeople(){
+    try{ await dbSet(STORAGE_KEY, people); }
+    catch(e){ console.error('save failed', e); }
+  }
+
+  // Each photo and the audio clip get their OWN storage key, instead of one
+  // combined blob — so a big recording never blocks a photo (or vice versa),
+  // and no single save has to carry the whole album's weight at once.
+  // Display order is tracked separately (as an array of photo keys) so it
+  // can be rearranged independently of when each photo was added.
+  async function listAlbumPhotoKeys(id){
+    try{ return (await dbListKeys('photo:'+id+':')).sort(); }
+    catch(e){ return []; }
+  }
+  async function loadPhotoOrder(id){
+    try{ const v = await dbGet('order:'+id); return Array.isArray(v) ? v : []; }
+    catch(e){ return []; }
+  }
+  async function savePhotoOrder(id, order){
+    try{ await dbSet('order:'+id, order); }catch(e){ console.error('order save failed', e); }
+  }
+  async function loadAlbum(id){
+    const allKeys = await listAlbumPhotoKeys(id);
+    const originalOrder = await loadPhotoOrder(id);
+    let order = originalOrder.filter(k => allKeys.includes(k)); // drop stale/deleted entries
+    const newOnes = allKeys.filter(k => !order.includes(k));    // newly added, not yet ordered
+    const finalOrder = order.concat(newOnes);
+    if(newOnes.length || order.length !== originalOrder.length){
+      // keep the stored order in sync so future edits build on a clean list
+      savePhotoOrder(id, finalOrder);
+    }
+    const photos = [];
+    for(const k of finalOrder){
+      try{
+        const v = await dbGet(k);
+        if(!v) continue;
+        // Backward-compat: earlier version stored each photo as a plain
+        // dataURL string. Newer entries are {src, audio}.
+        if(typeof v === 'string') photos.push({key:k, src:v, audio:null});
+        else photos.push({key:k, src:v.src, audio:v.audio || null});
+      }catch(e){}
+    }
+    let audio = null;
+    try{ const v = await dbGet('audio:'+id); if(v) audio = v; }
+    catch(e){ audio = null; }
+    return {photos, audio};
+  }
+  async function moveAlbumPhoto(id, key, direction){
+    const order = await loadPhotoOrder(id);
+    const idx = order.indexOf(key);
+    if(idx < 0) return;
+    const newIdx = idx + direction;
+    if(newIdx < 0 || newIdx >= order.length) return;
+    [order[idx], order[newIdx]] = [order[newIdx], order[idx]];
+    await savePhotoOrder(id, order);
+  }
+  async function addAlbumPhoto(id, dataUrl, silent){
+    const key = 'photo:'+id+':'+Date.now()+Math.random().toString(36).slice(2,6);
+    try{ await dbSet(key, {src:dataUrl, audio:null}); return true; }
+    catch(e){
+      console.error('photo save failed', e);
+      if(!silent) alert("That photo wouldn't save. Details: " + (e && e.message ? e.message : String(e)));
+      return false;
+    }
+  }
+  async function setPhotoAudio(photoKey, dataUrl){
+    try{
+      const rec = await dbGet(photoKey);
+      if(!rec) return false;
+      const normalized = (typeof rec === 'string') ? {src:rec, audio:null} : rec;
+      normalized.audio = dataUrl;
+      await dbSet(photoKey, normalized);
+      return true;
+    }catch(e){
+      console.error('photo audio save failed', e);
+      alert("That voice clip wouldn't save. Details: " + (e && e.message ? e.message : String(e)));
+      return false;
+    }
+  }
+  async function removePhotoAudio(photoKey){
+    try{
+      const rec = await dbGet(photoKey);
+      if(!rec) return;
+      const normalized = (typeof rec === 'string') ? {src:rec, audio:null} : rec;
+      normalized.audio = null;
+      await dbSet(photoKey, normalized);
+    }catch(e){}
+  }
+  // Tries progressively smaller/lower-quality versions of the photo until
+  // one actually saves. Sized for a crisp full-screen look on iPad's retina
+  // display — IndexedDB (unlike the old storage method) has no tight
+  // per-item size limit, so there's no need to compress as aggressively.
+  // If the browser can't decode the image at all (this happens with some
+  // formats, e.g. HEIC photos straight off an iPhone), falls back to saving
+  // the original file as-is when it's small enough.
+  const COMPRESSION_STEPS = [ [1800,0.85], [1400,0.8], [1000,0.72], [700,0.6] ];
+  async function compressAndAddPhoto(id, file){
+    let decodeFailed = false;
+    for(let i=0; i<COMPRESSION_STEPS.length; i++){
+      const [maxDim, quality] = COMPRESSION_STEPS[i];
+      const isLastStep = i === COMPRESSION_STEPS.length - 1;
+      try{
+        const dataUrl = await compressImageFile(file, maxDim, quality);
+        const ok = await addAlbumPhoto(id, dataUrl, !isLastStep);
+        if(ok) return true;
+      }catch(e){
+        decodeFailed = true; // the browser couldn't read this image format at all
+        break; // no point trying smaller sizes if it can't be decoded
+      }
+    }
+    if(decodeFailed && file.size < 4 * 1024 * 1024){
+      try{
+        const rawDataUrl = await readFileAsDataUrl(file);
+        const ok = await addAlbumPhoto(id, rawDataUrl, true);
+        if(ok) return true;
+      }catch(e){ /* fall through to final failure below */ }
+      alert("That photo's format isn't supported by this browser (this can happen with HEIC photos). Please try a JPG or PNG instead, or take a new photo directly in the app.");
+      return false;
+    }
+    alert("That photo wouldn't save — please try a different one.");
+    return false;
+  }
+  function readFileAsDataUrl(file){
+    return new Promise((resolve, reject)=>{
+      const reader = new FileReader();
+      reader.onload = ()=> resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+  async function removeAlbumPhoto(key){
+    try{ await dbDelete(key); }catch(e){}
+  }
+  async function setAlbumAudio(id, dataUrl){
+    try{ await dbSet('audio:'+id, dataUrl); return true; }
+    catch(e){
+      console.error('audio save failed', e);
+      alert("That voice message wouldn't save. Details: " + (e && e.message ? e.message : String(e)));
+      return false;
+    }
+  }
+  async function removeAlbumAudio(id){
+    try{ await dbDelete('audio:'+id); }catch(e){}
+  }
+  const MAX_ALBUM_PHOTOS = 10;
+
+  function compressImageFile(file, maxDim, quality){
+    return new Promise((resolve, reject)=>{
+      const reader = new FileReader();
+      reader.onload = ()=>{
+        const img = new Image();
+        img.onload = ()=>{
+          try{
+            let w = img.width, h = img.height;
+            if(w > h){ if(w > maxDim){ h = Math.round(h*maxDim/w); w = maxDim; } }
+            else{ if(h > maxDim){ w = Math.round(w*maxDim/h); h = maxDim; } }
+            const c = document.createElement('canvas'); c.width = w; c.height = h;
+            c.getContext('2d').drawImage(img, 0, 0, w, h);
+            resolve(c.toDataURL('image/jpeg', quality));
+          }catch(err){ reject(err); } // e.g. canvas security/taint error
+        };
+        img.onerror = reject; // e.g. browser can't decode this format at all
+        img.src = reader.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // ---------- speech ----------
+  function speak(text){
+    if(muted) return;
+    try{
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 0.95; u.pitch = 1.0;
+      window.speechSynthesis.speak(u);
+    }catch(e){}
+  }
+
+  $('muteBtn').addEventListener('click', ()=>{
+    muted = !muted;
+    $('muteBtn').textContent = muted ? '🔈' : '🔊';
+    if(muted) window.speechSynthesis.cancel();
+  });
+
+  let slideTimer = null;
+  let slidePhotos = [];       // [{src, audio}]
+  let slideIdx = 0;
+  let audioMode = null;       // 'intro' | 'photo' | null
+  let currentPersonId = null;
+  const resultAudio = $('resultAudio');
+
+  function renderDots(n, activeIdx){
+    resultDots.innerHTML = '';
+    if(n <= 1) return;
+    for(let i=0;i<n;i++){
+      const d = document.createElement('span');
+      if(i === activeIdx) d.classList.add('active');
+      resultDots.appendChild(d);
+    }
+  }
+
+  function showSlide(idx){
+    slideIdx = idx;
+    const photo = slidePhotos[idx];
+    resultPhoto.style.opacity = 0;
+    resultPhotoBg.style.opacity = 0;
+    setTimeout(()=>{
+      resultPhoto.src = photo.src; resultPhoto.style.opacity = 1;
+      resultPhotoBg.src = photo.src; resultPhotoBg.style.opacity = 1;
+    }, 220);
+    renderDots(slidePhotos.length, idx);
+
+    clearTimeout(slideTimer);
+    resultAudio.pause();
+    if(photo.audio){
+      audioMode = 'photo';
+      resultAudio.src = photo.audio;
+      resultAudio.currentTime = 0;
+      resultAudio.play().catch(()=>{ scheduleAdvance(4000); });
+      // advances automatically when this clip's 'ended' event fires (see below)
+    }else{
+      audioMode = 'photo';
+      resultAudio.removeAttribute('src');
+      scheduleAdvance(4000); // no clip for this photo — just a comfortable dwell time
+    }
+  }
+  function scheduleAdvance(ms){
+    if(slidePhotos.length > 1){ slideTimer = setTimeout(advanceSlide, ms); }
+  }
+  function advanceSlide(){
+    showSlide((slideIdx + 1) % slidePhotos.length);
+  }
+  resultAudio.addEventListener('ended', ()=>{
+    if(audioMode === 'intro'){ showSlide(0); }
+    else if(audioMode === 'photo'){ if(slidePhotos.length > 1) advanceSlide(); }
+  });
+
+  function stopSlideshow(){
+    clearTimeout(slideTimer); slideTimer = null;
+    resultAudio.pause();
+    window.speechSynthesis.cancel();
+  }
+
+  async function showMatch(personId){
+    const p = people.find(x => x.id === personId);
+    if(!p) return;
+    currentPersonId = personId;
+    resultName.textContent = p.name;
+    resultRel.textContent = p.rel;
+    resultOverlay.classList.remove('hidden');
+
+    stopSlideshow();
+    const album = await loadAlbum(p.id);
+    slidePhotos = (album.photos && album.photos.length) ? album.photos : [{src:p.photo || '', audio:null}];
+
+    if(album.audio){
+      // A general introduction plays first; the slideshow (with any
+      // per-photo clips) begins once it finishes.
+      audioMode = 'intro';
+      resultAudio.src = album.audio;
+      resultAudio.currentTime = 0;
+      resultAudio.play().catch(()=>{ showSlide(0); });
+      renderDots(slidePhotos.length, 0);
+      resultPhoto.src = slidePhotos[0].src;
+      resultPhotoBg.src = slidePhotos[0].src;
+    }else if(!muted){
+      audioMode = null;
+      const u = new SpeechSynthesisUtterance('This is ' + p.name + ', ' + p.rel + '.');
+      u.onend = ()=> showSlide(0);
+      u.onerror = ()=> showSlide(0);
+      renderDots(slidePhotos.length, 0);
+      resultPhoto.src = slidePhotos[0].src;
+      resultPhotoBg.src = slidePhotos[0].src;
+      window.speechSynthesis.speak(u);
+    }else{
+      showSlide(0);
+    }
+  }
+
+  $('replayBtn').addEventListener('click', ()=>{
+    if(currentPersonId) showMatch(currentPersonId);
+  });
+  $('dismissBtn').addEventListener('click', closeResult);
+  function closeResult(){
+    resultOverlay.classList.add('hidden');
+    stopSlideshow();
+    resultAudio.src = '';
+    currentPersonId = null;
+  }
+
+  // ---------- people grid (tap someone to see who they are) ----------
+  async function buildPeopleGrid(){
+    peopleGrid.innerHTML = '';
+    for(const p of people){
+      const album = await loadAlbum(p.id);
+      const thumbSrc = (album.photos && album.photos.length) ? album.photos[0].src : (p.photo || null);
+      const tile = document.createElement('button');
+      tile.className = 'people-tile';
+      if(thumbSrc){
+        tile.innerHTML = `<img src="${thumbSrc}" alt=""><span>${p.name}</span>`;
+      }else{
+        const initial = (p.name || '?').trim().charAt(0).toUpperCase();
+        tile.innerHTML = `<div class="avatar-fallback">${initial}</div><span>${p.name}</span>`;
+      }
+      tile.addEventListener('click', ()=> showMatch(p.id));
+      peopleGrid.appendChild(tile);
+    }
+  }
+
+  // ---------- recognize view refresh ----------
+  async function refreshRecognizeView(){
+    if(!people.length){
+      emptyState.style.display = 'block';
+      statusText.style.display = 'none';
+      peopleGrid.style.display = 'none';
+      return;
+    }
+    emptyState.style.display = 'none';
+    statusText.style.display = 'block';
+    peopleGrid.style.display = 'flex';
+    await buildPeopleGrid();
+  }
+
+  // ---------- setup hold-to-open ----------
+  const setupHold = $('setupHold'), holdProgress = $('holdProgress');
+  let holdTimer = null, holdStart = null;
+  function beginHold(){
+    holdStart = Date.now();
+    holdTimer = setInterval(()=>{
+      const pct = Math.min(100, (Date.now()-holdStart)/900*100);
+      holdProgress.style.setProperty('--pct', pct);
+      if(pct >= 100){ clearInterval(holdTimer); holdTimer=null; openManage(); }
+    }, 40);
+  }
+  function endHold(){
+    if(holdTimer){ clearInterval(holdTimer); holdTimer=null; }
+    holdProgress.style.setProperty('--pct', 0);
+  }
+  setupHold.addEventListener('pointerdown', beginHold);
+  setupHold.addEventListener('pointerup', endHold);
+  setupHold.addEventListener('pointerleave', endHold);
+
+  // ---------- manage view ----------
+  function openManage(){
+    recognizeView.classList.remove('active');
+    manageView.classList.add('active');
+    renderPeopleList();
+  }
+  $('backBtn').addEventListener('click', async ()=>{
+    if(typeof stopRecordingIfActive === 'function') stopRecordingIfActive();
+    if(typeof stopPhotoRecordingIfActive === 'function') stopPhotoRecordingIfActive();
+    currentAlbumId = null;
+    currentPhotoAudioKey = null;
+    $('addForm').classList.remove('showing');
+    $('albumEditor').classList.remove('showing');
+    $('photoAudioPanel').classList.add('hidden');
+    $('listWrap').style.display = 'block';
+    manageView.classList.remove('active');
+    recognizeView.classList.add('active');
+    await refreshRecognizeView();
+  });
+
+  function renderPeopleList(){
+    const list = $('peopleList');
+    list.innerHTML = '';
+    if(!people.length){
+      list.innerHTML = '<p class="hint">No one added yet. Tap the button below to add the first person.</p>';
+    }
+    people.forEach(p=>{
+      const row = document.createElement('div');
+      row.className = 'person-row';
+      row.innerHTML = `<img src="${p.photo}" alt="">
+        <div class="pinfo"><b>${p.name}</b><span>${p.rel}</span></div>
+        <button data-id="${p.id}" class="album-btn" title="Photos & voice">🖼️</button>
+        <button data-id="${p.id}" class="del">🗑</button>`;
+      row.querySelector('.album-btn').addEventListener('click', (e)=>{
+        openAlbumEditor(e.currentTarget.getAttribute('data-id'));
+      });
+      row.querySelector('.del').addEventListener('click', async (e)=>{
+        const id = e.currentTarget.getAttribute('data-id');
+        people = people.filter(x=>x.id!==id);
+        await savePeople();
+        renderPeopleList();
+      });
+      list.appendChild(row);
+    });
+  }
+
+  // ---------- album editor (photos + voice message) ----------
+  let currentAlbumId = null, mediaRecorder = null, audioChunks = [], recordTimer = null;
+  let currentPhotoAudioKey = null, photoMediaRecorder = null, photoAudioChunks = [], photoRecordTimer = null;
+
+  async function openAlbumEditor(id){
+    currentAlbumId = id;
+    const p = people.find(x=>x.id===id);
+    if(!p) return;
+    $('listWrap').style.display = 'none';
+    $('addForm').classList.remove('showing');
+    $('albumEditorName').textContent = p.name + ' — ' + p.rel;
+    $('albumEditor').classList.add('showing');
+    $('photoAudioPanel').classList.add('hidden');
+    currentPhotoAudioKey = null;
+    await renderAlbumEditor();
+  }
+  function closeAlbumEditor(){
+    currentAlbumId = null;
+    stopRecordingIfActive();
+    stopPhotoRecordingIfActive();
+    $('photoAudioPanel').classList.add('hidden');
+    currentPhotoAudioKey = null;
+    $('albumEditor').classList.remove('showing');
+    $('listWrap').style.display = 'block';
+    renderPeopleList();
+  }
+  $('albumDoneBtn').addEventListener('click', closeAlbumEditor);
+
+  async function renderAlbumEditor(){
+    const album = await loadAlbum(currentAlbumId);
+    const grid = $('albumGrid');
+    grid.innerHTML = '';
+    album.photos.forEach((ph, idx)=>{
+      const t = document.createElement('div'); t.className = 'athumb';
+      t.innerHTML = `
+        <div class="athumb-img-wrap">
+          <img src="${ph.src}" alt="">
+          <button class="rm">✕</button>
+          <button class="photo-audio-btn ${ph.audio ? 'has-audio' : ''}" title="Voice for this photo">${ph.audio ? '🔊' : '🎙️'}</button>
+        </div>
+        <div class="athumb-order">
+          <button class="mv-left" title="Move earlier" ${idx===0 ? 'disabled' : ''}>◀</button>
+          <button class="mv-right" title="Move later" ${idx===album.photos.length-1 ? 'disabled' : ''}>▶</button>
+        </div>`;
+      t.querySelector('.rm').addEventListener('click', async ()=>{
+        await removeAlbumPhoto(ph.key);
+        renderAlbumEditor();
+      });
+      t.querySelector('.photo-audio-btn').addEventListener('click', ()=>{
+        openPhotoAudioPanel(ph.key, ph.src);
+      });
+      t.querySelector('.mv-left').addEventListener('click', async ()=>{
+        await moveAlbumPhoto(currentAlbumId, ph.key, -1);
+        renderAlbumEditor();
+      });
+      t.querySelector('.mv-right').addEventListener('click', async ()=>{
+        await moveAlbumPhoto(currentAlbumId, ph.key, 1);
+        renderAlbumEditor();
+      });
+      grid.appendChild(t);
+    });
+    $('addPhotosInput').disabled = album.photos.length >= MAX_ALBUM_PHOTOS;
+    document.querySelector('label[for=addPhotosInput]').style.opacity = album.photos.length >= MAX_ALBUM_PHOTOS ? '0.5' : '1';
+
+    if(album.audio){
+      $('audioStatus').textContent = 'Voice introduction added.';
+      $('audioPreview').src = album.audio; $('audioPreview').style.display = 'block';
+      $('removeAudioBtn').style.display = 'inline-block';
+      $('recordBtn').style.display = 'none';
+      document.querySelector('label[for=uploadAudioInput]').style.display = 'none';
+    }else{
+      $('audioStatus').textContent = 'No voice introduction added yet.';
+      $('audioPreview').style.display = 'none';
+      $('removeAudioBtn').style.display = 'none';
+      $('recordBtn').style.display = 'inline-block';
+      document.querySelector('label[for=uploadAudioInput]').style.display = 'inline-block';
+    }
+  }
+
+  $('addPhotosInput').addEventListener('change', async (e)=>{
+    const files = Array.from(e.target.files||[]);
+    if(!files.length) return;
+    const existing = await listAlbumPhotoKeys(currentAlbumId);
+    let remaining = MAX_ALBUM_PHOTOS - existing.length;
+    if(remaining <= 0){
+      alert('This person already has ' + MAX_ALBUM_PHOTOS + ' photos — remove one first to add another.');
+      e.target.value = ''; return;
+    }
+    for(const f of files){
+      if(remaining <= 0) break;
+      const ok = await compressAndAddPhoto(currentAlbumId, f);
+      if(ok) remaining--;
+    }
+    e.target.value = '';
+    renderAlbumEditor();
+  });
+
+  $('uploadAudioInput').addEventListener('change', (e)=>{
+    const file = e.target.files && e.target.files[0];
+    if(!file) return;
+    if(file.size > 3 * 1024 * 1024){
+      alert('That audio file is quite large — please choose a shorter clip (under 20-30 seconds works best).');
+      e.target.value = ''; return;
+    }
+    const reader = new FileReader();
+    reader.onload = async ()=>{
+      await setAlbumAudio(currentAlbumId, reader.result);
+      e.target.value = '';
+      renderAlbumEditor();
+    };
+    reader.readAsDataURL(file);
+  });
+
+  $('removeAudioBtn').addEventListener('click', async ()=>{
+    await removeAlbumAudio(currentAlbumId);
+    renderAlbumEditor();
+  });
+
+  $('recordBtn').addEventListener('click', async ()=>{
+    if(mediaRecorder && mediaRecorder.state === 'recording'){ mediaRecorder.stop(); return; }
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+      audioChunks = [];
+      let options = {mimeType:'audio/webm;codecs=opus', audioBitsPerSecond:24000};
+      try{ mediaRecorder = new MediaRecorder(stream, options); }
+      catch(e){ mediaRecorder = new MediaRecorder(stream); } // fall back if opus/bitrate option unsupported
+      mediaRecorder.ondataavailable = (ev)=>{ if(ev.data.size>0) audioChunks.push(ev.data); };
+      mediaRecorder.onstop = async ()=>{
+        stream.getTracks().forEach(t=>t.stop());
+        clearTimeout(recordTimer);
+        $('recordBtn').textContent = '🎤 Record voice message';
+        const blob = new Blob(audioChunks, {type: mediaRecorder.mimeType || 'audio/webm'});
+        const reader = new FileReader();
+        reader.onload = async ()=>{
+          await setAlbumAudio(currentAlbumId, reader.result);
+          renderAlbumEditor();
+        };
+        reader.readAsDataURL(blob);
+      };
+      mediaRecorder.start();
+      $('recordBtn').textContent = '⏹ Stop recording (20s max)';
+      recordTimer = setTimeout(()=>{ if(mediaRecorder && mediaRecorder.state==='recording') mediaRecorder.stop(); }, 20000);
+    }catch(e){
+      alert("Could not access the microphone. Check that this site has microphone permission.");
+    }
+  });
+  function stopRecordingIfActive(){
+    if(mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+  }
+
+  // ---------- per-photo audio panel ----------
+  async function openPhotoAudioPanel(photoKey, photoSrc){
+    currentPhotoAudioKey = photoKey;
+    $('photoAudioThumb').src = photoSrc;
+    $('photoAudioPanel').classList.remove('hidden');
+    await refreshPhotoAudioPanel();
+  }
+  async function refreshPhotoAudioPanel(){
+    const rec = await dbGet(currentPhotoAudioKey);
+    const audio = rec && typeof rec === 'object' ? rec.audio : null;
+    if(audio){
+      $('photoAudioStatus').textContent = 'Voice added for this photo.';
+      $('photoAudioPreview').src = audio; $('photoAudioPreview').style.display = 'block';
+      $('photoRemoveAudioBtn').style.display = 'inline-block';
+      $('photoRecordBtn').style.display = 'none';
+      document.querySelector('label[for=photoUploadAudioInput]').style.display = 'none';
+    }else{
+      $('photoAudioStatus').textContent = 'No voice added for this photo.';
+      $('photoAudioPreview').style.display = 'none';
+      $('photoRemoveAudioBtn').style.display = 'none';
+      $('photoRecordBtn').style.display = 'inline-block';
+      document.querySelector('label[for=photoUploadAudioInput]').style.display = 'inline-block';
+    }
+  }
+  $('photoAudioClose').addEventListener('click', ()=>{
+    stopPhotoRecordingIfActive();
+    $('photoAudioPanel').classList.add('hidden');
+    currentPhotoAudioKey = null;
+    renderAlbumEditor();
+  });
+  $('photoUploadAudioInput').addEventListener('change', (e)=>{
+    const file = e.target.files && e.target.files[0];
+    if(!file) return;
+    if(file.size > 3 * 1024 * 1024){
+      alert('That audio file is quite large — please choose a shorter clip.');
+      e.target.value = ''; return;
+    }
+    const reader = new FileReader();
+    reader.onload = async ()=>{
+      await setPhotoAudio(currentPhotoAudioKey, reader.result);
+      e.target.value = '';
+      refreshPhotoAudioPanel();
+    };
+    reader.readAsDataURL(file);
+  });
+  $('photoRemoveAudioBtn').addEventListener('click', async ()=>{
+    await removePhotoAudio(currentPhotoAudioKey);
+    refreshPhotoAudioPanel();
+  });
+  $('photoRecordBtn').addEventListener('click', async ()=>{
+    if(photoMediaRecorder && photoMediaRecorder.state === 'recording'){ photoMediaRecorder.stop(); return; }
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+      photoAudioChunks = [];
+      let options = {mimeType:'audio/webm;codecs=opus', audioBitsPerSecond:24000};
+      try{ photoMediaRecorder = new MediaRecorder(stream, options); }
+      catch(e){ photoMediaRecorder = new MediaRecorder(stream); }
+      photoMediaRecorder.ondataavailable = (ev)=>{ if(ev.data.size>0) photoAudioChunks.push(ev.data); };
+      photoMediaRecorder.onstop = async ()=>{
+        stream.getTracks().forEach(t=>t.stop());
+        clearTimeout(photoRecordTimer);
+        $('photoRecordBtn').textContent = '🎤 Record';
+        const blob = new Blob(photoAudioChunks, {type: photoMediaRecorder.mimeType || 'audio/webm'});
+        const reader = new FileReader();
+        reader.onload = async ()=>{
+          await setPhotoAudio(currentPhotoAudioKey, reader.result);
+          refreshPhotoAudioPanel();
+        };
+        reader.readAsDataURL(blob);
+      };
+      photoMediaRecorder.start();
+      $('photoRecordBtn').textContent = '⏹ Stop (20s max)';
+      photoRecordTimer = setTimeout(()=>{ if(photoMediaRecorder && photoMediaRecorder.state==='recording') photoMediaRecorder.stop(); }, 20000);
+    }catch(e){
+      alert("Could not access the microphone. Check that this site has microphone permission.");
+    }
+  });
+  function stopPhotoRecordingIfActive(){
+    if(photoMediaRecorder && photoMediaRecorder.state === 'recording') photoMediaRecorder.stop();
+  }
+
+  $('showAddBtn').addEventListener('click', ()=>{
+    $('listWrap').style.display = 'none';
+    $('addForm').classList.add('showing');
+    $('nameInput').value=''; $('relInput').value='';
+  });
+  $('cancelAddBtn').addEventListener('click', ()=>{
+    $('addForm').classList.remove('showing');
+    $('listWrap').style.display = 'block';
+  });
+
+  $('saveBtn').addEventListener('click', async ()=>{
+    const name = $('nameInput').value.trim();
+    const rel = $('relInput').value.trim();
+    if(!name || !rel){ alert('Please add a name and relationship.'); return; }
+    const person = { id: 'p_' + Date.now(), name, rel };
+    people.push(person);
+    await savePeople();
+    $('addForm').classList.remove('showing');
+    await openAlbumEditor(person.id);
+  });
+
+  // ---------- boot ----------
+  (async function boot(){
+    await loadPeople();
+    await refreshRecognizeView();
+  })();
+})();
+</script>
+</body>
+</html>
